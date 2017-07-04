@@ -1,0 +1,82 @@
+# coding=utf-8
+import cv2
+import dlib
+import numpy
+
+
+detector = dlib.get_frontal_face_detector()
+sp = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
+facerec = dlib.face_recognition_model_v1("dlib_face_recognition_resnet_model_v1.dat")
+
+
+#cap = cv2.VideoCapture('2.mp4')
+cap = cv2.VideoCapture("http://192.168.0.141:1234/video")
+
+count = 0
+simul = 0
+def deal(dets,img,simul):
+	for i, d in enumerate(dets):
+        	print("Detection {}: Left: {} Top: {} Right: {} Bottom: {}".format(
+            		i, d.left(), d.top(), d.right(), d.bottom()))
+		shape = sp(img,d)
+		face_descriptor = facerec.compute_face_descriptor(img, shape)
+		if i == 0:
+			v = numpy.array(face_descriptor)
+		elif i == 1:
+			w = numpy.array(face_descriptor)
+			dist = numpy.linalg.norm(w-v)
+			if dist > 0.5:
+				simul += 1
+			else:
+				simul += 0
+	return simul
+
+def display(s):
+	if s == 1:
+		cap = cv2.VideoCapture('1.gif')
+	else:
+		cap = cv2.VideoCapture('2.gif')
+	win = dlib.image_window()
+	while cap.isOpened():
+    		ret, cv_img = cap.read()
+    		if cv_img is None:
+        		break
+    		img = cv2.cvtColor(cv_img, cv2.COLOR_RGB2BGR)
+    		win.set_image(img)
+    		cv2.waitKey(100)
+	cap.release()
+
+			
+win = dlib.image_window()
+while cap.isOpened():
+
+    ret, cv_img = cap.read()
+    if cv_img is None:
+        break
+    
+    img = cv2.cvtColor(cv_img, cv2.COLOR_RGB2BGR)
+    dets = detector(img, 0)
+    win.clear_overlay()
+    win.set_image(img)
+    win.add_overlay(dets)
+
+    print("Number of faces detected: {}".format(len(dets)))
+
+    if len(dets) == 2:
+	count += 1
+	simul = deal(dets,img,simul)
+	
+    	
+    if count == 10:
+	count = 0
+	if simul > 6:
+		display(0)
+		print 'This is not a person!'
+	else:
+		display(1)
+		print 'This is a person!'
+	simul = 0
+	
+    
+
+cap.release()

@@ -1,0 +1,177 @@
+from PyQt4.QtCore import *
+from PyQt4.QtGui import *
+import sys
+import cv2 
+import dlib
+import numpy
+from PIL import Image
+from PyQt4 import QtGui
+import time
+from multiprocessing import Process,Queue
+from skimage import io
+
+detector = dlib.get_frontal_face_detector()
+sp = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
+facerec = dlib.face_recognition_model_v1("dlib_face_recognition_resnet_model_v1.dat")
+
+MSG_QUEUE = Queue(10)
+	
+class MainWindow(QWidget):
+    def __init__(self, msgQueue,parent = None):
+        QWidget.__init__(self)
+	self.msg = msgQueue
+        self.resize(1000, 600)
+        self.setWindowTitle('vedio control')
+        self.image = QtGui.QPixmap()
+       
+        self.playcapture = cv2.VideoCapture("2.mp4")
+
+        vbox = QVBoxLayout()
+
+       
+        self.piclabel = QLabel('pic')
+	self.getlabel = QLabel('pic')
+        hbox = QHBoxLayout()
+	hbox.addWidget(self.piclabel)
+        hbox.addStretch(1)
+	hbox.addWidget(self.getlabel)
+
+	self.title = QtGui.QLabel('Title')
+	self.okButton = QtGui.QPushButton("OK")
+	hbox1 = QHBoxLayout()
+	hbox1.addWidget(self.title)
+        hbox1.addStretch(1)
+	hbox1.addWidget(self.okButton)
+
+	vbox = QVBoxLayout()
+	vbox.addLayout(hbox)
+	vbox.addStretch(1)
+	vbox.addLayout(hbox1)
+	
+	
+       
+        self.setLayout(vbox)
+	self.count = 0
+	self.sign = 0
+	
+       
+
+        if self.image.load("1.jpg"): 
+            self.piclabel.setPixmap(self.image) 
+
+        self.playtimer = Timer("updatePlay()")
+	self.playtimer.start()
+	
+       
+        self.connect(self.playtimer, SIGNAL("updatePlay()"),
+                                                    self.PlayVideo) 
+        self.connect(self.okButton, SIGNAL("clicked()"),
+                                              self.Thread_new)
+
+	
+    def Thread_new(self):
+	self.sign = True
+
+
+    def PlayVideo(self):
+	
+        ret,im = self.playcapture.read()
+	if im is None:
+		self.playcapture.release()
+		self.playtimer.stop()
+		return 
+	img = cv2.resize(im,(640,360))
+	cv2.imwrite("www/" + str(self.count) + ".jpg",img)
+	
+	self.image.load("www/" + str(self.count) + ".jpg")
+	if self.sign == True:
+		self.sign = False
+		for i in range(0,10):
+			self.msg.put(img)
+			print '111111111 %d\n' % self.msg.qsize()
+	self.piclabel.setPixmap(self.image)
+	self.count += 1
+	if self.count == 25:
+		self.count = 0
+
+
+           
+   
+class Timer(QThread):
+   
+    def __init__(self, signal = "updatePlay()", parent=None):
+        super(Timer, self).__init__(parent)
+        self.stoped = False
+        self.signal = signal
+        self.mutex = QMutex()
+
+
+    def run(self):
+        with QMutexLocker(self.mutex):
+            self.stoped = False
+        while True:
+            if self.stoped:
+                return
+
+            self.emit(SIGNAL(self.signal))
+            time.sleep(0.04)
+
+    def stop(self):
+        with QMutexLocker(self.mutex):
+            self.stoped = True
+        
+    def isStoped(self):    
+        with QMutexLocker(sellf.mutex):
+            return self.stoped
+
+def Show(msgQueue):
+	app = QApplication(sys.argv)
+    	main = MainWindow(msgQueue)
+    	main.show()
+    	sys.exit(app.exec_())
+
+
+def Recgition(msgQueue):  
+        global detector,sp,facerec
+        while 1:
+      	   if msgQueue.qsize() != 10:
+		#print '123\t %d\n' % (msgQueue.qsize())
+		pass
+           else :
+	      count = 0
+	      while msgQueue.qsize() != 0:
+		img = msgQueue.get()
+		print 'xxxxxxxxxxxxxxx\n'
+		
+    	        dets = detector(img, 1)	
+	        if len(dets) == 2:
+		   for i, d in enumerate(dets):
+			shape = sp(img,d)
+			face_descriptor = facerec.compute_face_descriptor(img, shape)
+			if i == 0:
+				v = numpy.array(face_descriptor)
+			elif i == 1:
+				w = numpy.array(face_descriptor)
+				dist = numpy.linalg.norm(w-v)
+				if dist > 0.56:
+					print 'This is not ome person!\n'
+				else:
+					print 'This is one person!\n'
+		
+
+	
+
+
+
+
+if __name__ == '__main__':
+	processA = Process(target=Recgition,args=(MSG_QUEUE,))
+    	processB = Process(target=Show,args=(MSG_QUEUE,))
+
+    	processA.start()
+
+
+    	processB.start()
+	
+
+    
